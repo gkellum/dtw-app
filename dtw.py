@@ -15,6 +15,7 @@ from typing import Optional
 # -- plotting --
 import matplotlib
 import matplotlib.pyplot as plt
+import librosa.display
 
 # -- dtw --
 import librosa
@@ -118,13 +119,13 @@ class DTW:
 
         # -- plot self.x_raw --
         plt.subplot(2, 1, 1)
-        librosa.display.waveplot(self.x_raw, sr=self.fs)
+        librosa.display.waveshow(self.x_raw, sr=self.fs)
         plt.title('Audio Baseline $x\_raw$')
         ax1 = plt.gca()
 
         # -- plot self.y_raw --
         plt.subplot(2, 1, 2)
-        librosa.display.waveplot(self.y_raw, sr=self.fs)
+        librosa.display.waveshow(self.y_raw, sr=self.fs)
         plt.title('Audio Warped $y\_raw$')
         ax2 = plt.gca()
 
@@ -206,6 +207,26 @@ class DTW:
         plt.legend(['data', 'linear'], loc='best')
         plt.show()
 
+    def get_remap_function(self) -> None:
+        """
+            Shows the function that remaps any arbitrary point in time from the midi & wav_from_midi to match the original audio sequence.
+        """
+        # -- drop duplicates --
+        df_mappings = self.df_mappings[["wav_from_midi", "wav_original"]].drop_duplicates(subset=["wav_from_midi"], keep="first")
+
+        # -- define mappings --
+        # x:       time (sec)
+        # f(x), y: time (sec) remapped
+        json_mappings_array= []
+        x = df_mappings["wav_from_midi"]
+        y = df_mappings["wav_original"]
+        for xValue, yValue in zip(x, y):
+            mapping_dict = dict()
+            mapping_dict["scoreTime"] = xValue
+            mapping_dict["performanceTime"] = yValue
+            json_mappings_array.append(mapping_dict)
+
+        return json_mappings_array
 
 class MidiIO:
     def __init__(self) -> None:
@@ -235,7 +256,7 @@ class MidiIO:
             for msg in track:
                 try:
                     time_abs += msg.time
-                    df = df.append(
+                    df2 = pd.DataFrame(
                         {
                             "type":           msg.type,
                             "channel":        msg.channel,
@@ -246,9 +267,11 @@ class MidiIO:
                             "time delta (tick)": msg.time,
                             "time abs (tick)":   time_abs,
                         },
-                        ignore_index=True
+                        index=[0]
                     )
-                except Exception:
+                    df = pd.concat([df, df2], ignore_index=True)
+                except Exception as e:
+                    print(f"caught exception {e}")
                     pass
         
         if clip_t0 is True:
@@ -287,10 +310,19 @@ class MidiIO:
         file.ticks_per_beat = ticks_per_beat
 
         # -- append note events --
-        time_t0:float = 0.0
+        minimum_time_t0:float = 0.0
+        for row_id, row in df_midi.iterrows():
+            if row[time_colname] < minimum_time_t0:
+                minimum_time_t0 = row[time_colname]
+
+        time_t0:float = -1 * minimum_time_t0
         for row_id, row in df_midi.iterrows():
             try:
-                t:int = round(mido.second2tick(second=row[time_colname]-time_t0, ticks_per_beat=ticks_per_beat, tempo=tempo))
+                time = row[time_colname]-time_t0
+                t:int = round(mido.second2tick(second=time, ticks_per_beat=ticks_per_beat, tempo=tempo))
+                if t < 0:
+                    print(f"midi note {row['note']} has time {time} ticks {t}")
+                    continue
                 msg = mido.Message(row['type'], channel=row['channel'], note=row['note'], velocity=row['velocity'], time=t)
                 track.append(msg)
                 time_t0 = row[time_colname]

@@ -46,6 +46,7 @@ import pickle
 from datetime import datetime
 import warnings
 warnings.filterwarnings('ignore')
+import json
 
 # -- plotting --
 import matplotlib.pyplot as plt
@@ -223,6 +224,7 @@ class MenuBar(tk.Menu):
         filemenu.add_command(label="Open .midi", command=self.on_open_midi, accelerator="Ctrl+M")
         filemenu.add_separator()
         filemenu.add_command(label="Export .midi", command=self.on_save_midi, accelerator="Ctrl+E")
+        filemenu.add_command(label="Export time mapping", command=self.on_save_measure_number_to_seconds, accelerator="Ctrl+T")
         filemenu.add_separator()
         filemenu.add_command(label="Exit", command=self.exit_app, accelerator="Ctrl+Q")
 
@@ -393,7 +395,8 @@ class MenuBar(tk.Menu):
 
     def on_open_mp3_original(self) -> None:
         # -- load dataset --
-        filename = filedialog.askopenfilename(initialdir="/", title="Open file", filetypes=(("audio files","*.mp3;*.wav;"),("all files","*.*")))
+        #filename = filedialog.askopenfilename(initialdir="/", title="Open file", filetypes=(("audio files","*.mp3;*.wav;"),("all files","*.*")))
+        filename = filedialog.askopenfilename(initialdir="/", title="Open file")
         
         if filename == "":
             print("Cancelled opening original mp3 file")
@@ -424,7 +427,8 @@ class MenuBar(tk.Menu):
 
     def on_open_mp3_from_midi(self) -> None:
         # -- load dataset --
-        filename = filedialog.askopenfilename(initialdir="/", title="Open file", filetypes=(("audio files","*.mp3;*.wav;"),("all files","*.*")))
+        #filename = filedialog.askopenfilename(initialdir="/", title="Open file", filetypes=(("audio files","*.mp3;*.wav;"),("all files","*.*")))
+        filename = filedialog.askopenfilename(initialdir="/", title="Open file")
         
         if filename == "":
             print("Cancelled opening mp3 from midi")
@@ -452,7 +456,9 @@ class MenuBar(tk.Menu):
         
     def on_open_midi(self) -> None:
         # -- load dataset --
-        filename = filedialog.askopenfilename(initialdir="/", title="Open file", filetypes=(("MIDI files","*.mid;*.MID"),("All files","*.*")))
+        #filename = filedialog.askopenfilename(initialdir="/", title="Open file", filetypes=(("MIDI files","*.mid;*.MID"),("All files","*.*")))
+        filename = filedialog.askopenfilename(initialdir="/", title="Open file")
+
         
         if filename == "":
             print("Cancelled opening midi file")
@@ -488,6 +494,27 @@ class MenuBar(tk.Menu):
             self.app.data_5.outfile += ".mid"
         MidiIO.export_midi(df_midi=self.app.data_5.df_midi, outfile=self.app.data_5.outfile, time_colname="time abs (sec)")
         print(f"Saved midi file to: {self.app.data_5.outfile}")
+
+    def on_save_measure_number_to_seconds(self) -> None:
+        if self.app.dtw_output_available is False:
+            messagebox.showinfo(title="Info", message="Run DTW first to enable stats.")
+            return
+
+        remap_dict:dict = self.app.dtw_obj.get_remap_function()
+
+        outputDict = {}
+        metadataDict = {}
+        metadataDict["alignmentAlgorithm"] = "DTW"
+        metadataDict["version"] = 1
+        metadataDict["performer"] = ""
+        metadataDict["composer"] = ""
+        metadataDict["score"] = ""
+        outputDict["metadata"] = metadataDict
+        outputDict["timeMappings"] = remap_dict
+
+        outfile: str = filedialog.asksaveasfilename(initialdir="/", title="Save as", filetypes=(("JSON files","*.json"),("All files","*.*")))
+        with open(outfile, "w") as json_file:
+            json.dump(outputDict, json_file)
 
     # ---------------------------------------------------------------
 
@@ -760,6 +787,9 @@ class MenuBar(tk.Menu):
 
     def ctrl_e(self, event) -> None:
         self.on_save_midi()
+
+    def ctrl_t(self, event) -> None:
+        self.on_save_measure_number_to_seconds()
 
     def ctrl_q(self, event) -> None:
         self.exit_app()
